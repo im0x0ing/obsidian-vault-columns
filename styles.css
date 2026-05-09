@@ -1,0 +1,291 @@
+.vault-columns-view {
+  --vault-columns-gap: 8px;
+  --vault-columns-left-width: minmax(180px, 0.92fr);
+  --vault-columns-right-width: minmax(260px, 1.35fr);
+  --vault-columns-accent: var(--primary-color, var(--interactive-accent));
+  --vault-columns-surface: var(--background-primary);
+  --vault-columns-panel: color-mix(in srgb, var(--background-primary) 97%, var(--vault-columns-accent) 3%);
+  --vault-columns-muted-panel: color-mix(in srgb, var(--background-primary) 95%, var(--vault-columns-accent) 5%);
+  --vault-columns-border: color-mix(in srgb, var(--background-modifier-border) 82%, var(--vault-columns-accent) 18%);
+  --vault-columns-hover: color-mix(in srgb, var(--background-modifier-hover) 88%, var(--vault-columns-accent) 12%);
+  --vault-columns-selected: var(--text-selection);
+  --vault-columns-row-height: 34px;
+  --vault-columns-row-indent: 18px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.vault-columns-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--vault-columns-gap);
+  height: 100%;
+  min-height: 0;
+  padding: 8px;
+  overflow: hidden;
+  background: var(--vault-columns-surface);
+}
+
+.vault-columns-toolbar {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  height: 38px;
+  padding: 4px;
+  gap: 8px;
+  justify-content: space-between;
+  border: 1px solid var(--vault-columns-border);
+  border-radius: 8px;
+  background: var(--vault-columns-muted-panel);
+}
+
+.vault-columns-mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vault-columns-mode-button {
+  justify-content: center;
+  width: 100%;
+  height: 28px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-medium);
+}
+
+.vault-columns-mode-button.is-active {
+  background: var(--vault-columns-selected);
+  color: var(--text-normal);
+}
+
+.vault-columns-icon-button {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+}
+
+.vault-columns-folder-board,
+.vault-columns-tag-board {
+  display: grid;
+  grid-template-columns: var(--vault-columns-left-width) var(--vault-columns-right-width);
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  gap: var(--vault-columns-gap);
+  overflow: hidden;
+}
+
+.vault-columns-right-stack {
+  display: grid;
+  grid-template-rows: minmax(132px, 38%) minmax(180px, 62%);
+  min-width: 0;
+  min-height: 0;
+  gap: var(--vault-columns-gap);
+  overflow: hidden;
+}
+
+.vault-columns-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--vault-columns-border);
+  border-radius: 8px;
+  background: var(--vault-columns-panel);
+}
+
+.vault-columns-primary-pane,
+.vault-columns-branch-pane,
+.vault-columns-tag-pane {
+  background: var(--vault-columns-muted-panel);
+}
+
+.vault-columns-notes-pane {
+  background: var(--vault-columns-panel);
+}
+
+.vault-columns-pane-header {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  height: 34px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--vault-columns-border);
+  background: color-mix(in srgb, var(--vault-columns-panel) 74%, transparent);
+}
+
+.vault-columns-pane-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-inline-end: 8px;
+  color: var(--text-muted);
+}
+
+.vault-columns-pane-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--font-ui-medium);
+}
+
+.vault-columns-scroller,
+.vault-columns-note-scroller {
+  height: calc(100% - 34px);
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+}
+
+.vault-columns-note-scroller {
+  padding: 8px 10px 12px;
+}
+
+.vault-columns-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: var(--vault-columns-row-height);
+  padding-inline-start: calc(var(--level, 0) * var(--vault-columns-row-indent));
+  cursor: pointer;
+  user-select: none;
+}
+
+.vault-columns-row-content {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px;
+  border-radius: 8px;
+}
+
+.vault-columns-row:hover > .vault-columns-row-content {
+  background: var(--vault-columns-hover);
+}
+
+.vault-columns-row.is-selected > .vault-columns-row-content {
+  background: var(--vault-columns-selected);
+}
+
+.vault-columns-chevron,
+.vault-columns-row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  color: var(--text-muted);
+}
+
+.vault-columns-chevron {
+  margin-inline-end: 4px;
+}
+
+.vault-columns-row-icon {
+  margin-inline-end: 8px;
+}
+
+.vault-columns-chevron.is-hidden {
+  visibility: hidden;
+}
+
+.vault-columns-row-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+}
+
+.vault-columns-row-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.vault-columns-row-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 9px;
+  color: var(--text-faint);
+  background: color-mix(in srgb, var(--background-primary) 72%, transparent);
+  font-size: var(--font-ui-smaller);
+}
+
+.vault-columns-note-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.vault-columns-note-row + .vault-columns-note-row {
+  margin-top: 2px;
+}
+
+.vault-columns-note-row:hover {
+  background: var(--vault-columns-hover);
+}
+
+.vault-columns-note-row.is-selected {
+  background: var(--vault-columns-selected);
+}
+
+.vault-columns-note-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 18px;
+  width: 18px;
+  margin-inline-end: 8px;
+  color: var(--text-muted);
+}
+
+.vault-columns-note-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.vault-columns-note-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+}
+
+.vault-columns-note-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+
+.vault-columns-empty-state {
+  min-height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  color: var(--text-muted);
+  text-align: center;
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+}

@@ -1,0 +1,10 @@
+{
+  "id": "vault-columns",
+  "name": "Vault Columns",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "A column-based folder and tag navigator for desktop Obsidian.",
+  "author": "im0x0ing",
+  "authorUrl": "https://github.com/im0x0ing",
+  "isDesktopOnly": true
+}

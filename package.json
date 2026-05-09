@@ -1,0 +1,33 @@
+{
+  "name": "obsidian-vault-columns",
+  "version": "0.1.0",
+  "description": "A column-based folder and tag navigator for desktop Obsidian.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production"
+  },
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "navigator",
+    "folders",
+    "tags"
+  ],
+  "author": "im0x0ing",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/im0x0ing/obsidian-vault-columns.git"
+  },
+  "bugs": {
+    "url": "https://github.com/im0x0ing/obsidian-vault-columns/issues"
+  },
+  "homepage": "https://github.com/im0x0ing/obsidian-vault-columns#readme",
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.25.0",
+    "obsidian": "^1.8.7",
+    "typescript": "^5.8.0"
+  }
+}
