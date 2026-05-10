@@ -10,7 +10,7 @@ Folder mode:
 
 - Left pane: top-level folders.
 - Right upper pane: subfolders for the selected top-level folder.
-- Right lower pane: direct Markdown notes in the selected folder.
+- Right lower pane: direct Markdown notes and PDFs in the selected folder.
 
 Tag mode:
 
@@ -20,14 +20,22 @@ Tag mode:
 ## Features
 
 - Keep top-level folders visible while browsing subfolders.
-- Show only direct Markdown notes for the selected folder.
-- Do not recursively include notes from subfolders.
+- Show only direct Markdown notes and PDFs for the selected folder.
+- Do not recursively include files from subfolders.
 - Keep empty folders visible.
 - Browse notes by a single tag without jumping to Obsidian search.
-- Open notes in the main editor.
-- Right-click notes for common file actions.
+- Open notes and PDFs in the main editor.
+- Right-click files for common file actions.
 - Right-click folders to create notes/folders, rename, delete, or copy paths.
+- Let other plugins extend the context menu through Obsidian's `file-menu` hook.
 - Follow Obsidian theme variables for colors, typography, and selection states.
+
+## Current Scope
+
+- Desktop only.
+- Folder mode shows direct Markdown notes and PDFs only.
+- Tag mode shows Markdown notes only, based on Obsidian's metadata cache.
+- Tags are single-select.
 
 ## Usage
 

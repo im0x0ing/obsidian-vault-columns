@@ -23,7 +23,7 @@ const external = [
 
 const context = await esbuild.context({
   banner: {
-    js: "/* Column Navigator for Obsidian */",
+    js: "/* Vault Columns for Obsidian */",
   },
   entryPoints: ["src/main.ts"],
   bundle: true,

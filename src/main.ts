@@ -353,7 +353,7 @@ class VaultColumnsView extends ItemView {
     if (showCount) {
       contentEl.createSpan({
         cls: "vault-columns-row-count",
-        text: String(this.getDirectMarkdownFiles(folder).length),
+        text: String(this.getDirectViewableFiles(folder).length),
       });
     }
 
@@ -399,7 +399,7 @@ class VaultColumnsView extends ItemView {
       return;
     }
 
-    const notes = this.getDirectMarkdownFiles(folder);
+    const notes = this.getDirectViewableFiles(folder);
     if (notes.length === 0) {
       this.renderEmptyState(listEl, "无直属笔记");
       return;
@@ -480,7 +480,7 @@ class VaultColumnsView extends ItemView {
       rowEl.setAttr("data-path", file.path);
 
       const iconEl = rowEl.createSpan({ cls: "vault-columns-note-icon" });
-      setIcon(iconEl, "file-text");
+      setIcon(iconEl, file.extension === "pdf" ? "file" : "file-text");
 
       const textEl = rowEl.createDiv({ cls: "vault-columns-note-text" });
       const titleEl = textEl.createDiv({
@@ -735,9 +735,14 @@ class VaultColumnsView extends ItemView {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  private getDirectMarkdownFiles(folder: TFolder) {
+  private static readonly VIEWABLE_EXTENSIONS = new Set(["md", "pdf"]);
+
+  private getDirectViewableFiles(folder: TFolder) {
     return folder.children
-      .filter((child): child is TFile => child instanceof TFile && child.extension === "md")
+      .filter(
+        (child): child is TFile =>
+          child instanceof TFile && VaultColumnsView.VIEWABLE_EXTENSIONS.has(child.extension),
+      )
       .sort((a, b) => a.basename.localeCompare(b.basename));
   }
 
