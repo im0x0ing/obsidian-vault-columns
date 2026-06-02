@@ -9,6 +9,8 @@ import {
   TAbstractFile,
   TFile,
   TFolder,
+  type SliderComponent,
+  type TextComponent,
   WorkspaceLeaf,
   getAllTags,
   normalizePath,
@@ -17,6 +19,16 @@ import {
 
 const VIEW_TYPE_VAULT_COLUMNS = "vault-columns-view";
 const FILE_MENU_SOURCE = "file-explorer";
+const MIN_ROW_FONT_SIZE = 10;
+const MAX_ROW_FONT_SIZE = 20;
+const MIN_PRIMARY_PANE_WIDTH = 140;
+const MAX_PRIMARY_PANE_WIDTH = 640;
+const MIN_SECONDARY_PANE_WIDTH = 220;
+const MIN_BRANCH_PANE_HEIGHT = 80;
+const MIN_NOTES_PANE_HEIGHT = 120;
+const MIN_NOTES_PANE_SHARE = 25;
+const MAX_NOTES_PANE_SHARE = 85;
+const LAYOUT_INPUT_WIDTH = "72px";
 
 type NavigatorMode = "folders" | "tags";
 
@@ -24,13 +36,23 @@ interface VaultColumnsSettings {
   defaultMode: NavigatorMode;
   showTagResultPaths: boolean;
   showTagNoteCounts: boolean;
+  rowFontSize: number;
+  primaryPaneWidth: number;
+  notesPaneShare: number;
 }
 
 const DEFAULT_SETTINGS: VaultColumnsSettings = {
   defaultMode: "folders",
   showTagResultPaths: true,
   showTagNoteCounts: true,
+  rowFontSize: 13,
+  primaryPaneWidth: 220,
+  notesPaneShare: 62,
 };
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), Math.max(min, max));
+}
 
 export default class VaultColumnsPlugin extends Plugin {
   settings: VaultColumnsSettings = DEFAULT_SETTINGS;
@@ -72,11 +94,68 @@ export default class VaultColumnsPlugin extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    this.settings = VaultColumnsPlugin.normalizeSettings(await this.loadData());
   }
 
   async saveSettings() {
+    this.settings = VaultColumnsPlugin.normalizeSettings(this.settings);
     await this.saveData(this.settings);
+  }
+
+  private static normalizeSettings(data: unknown): VaultColumnsSettings {
+    const settings =
+      data && typeof data === "object"
+        ? (data as Partial<VaultColumnsSettings>)
+        : {};
+
+    const defaultMode =
+      settings.defaultMode === "tags" || settings.defaultMode === "folders"
+        ? settings.defaultMode
+        : DEFAULT_SETTINGS.defaultMode;
+
+    return {
+      defaultMode,
+      showTagResultPaths:
+        typeof settings.showTagResultPaths === "boolean"
+          ? settings.showTagResultPaths
+          : DEFAULT_SETTINGS.showTagResultPaths,
+      showTagNoteCounts:
+        typeof settings.showTagNoteCounts === "boolean"
+          ? settings.showTagNoteCounts
+          : DEFAULT_SETTINGS.showTagNoteCounts,
+      rowFontSize: VaultColumnsPlugin.normalizeNumber(
+        settings.rowFontSize,
+        DEFAULT_SETTINGS.rowFontSize,
+        MIN_ROW_FONT_SIZE,
+        MAX_ROW_FONT_SIZE,
+      ),
+      primaryPaneWidth: VaultColumnsPlugin.normalizeNumber(
+        settings.primaryPaneWidth,
+        DEFAULT_SETTINGS.primaryPaneWidth,
+        MIN_PRIMARY_PANE_WIDTH,
+        MAX_PRIMARY_PANE_WIDTH,
+      ),
+      notesPaneShare: VaultColumnsPlugin.normalizeNumber(
+        settings.notesPaneShare,
+        DEFAULT_SETTINGS.notesPaneShare,
+        MIN_NOTES_PANE_SHARE,
+        MAX_NOTES_PANE_SHARE,
+      ),
+    };
+  }
+
+  private static normalizeNumber(
+    value: unknown,
+    fallback: number,
+    min: number,
+    max: number,
+  ) {
+    const parsedValue =
+      typeof value === "number" || (typeof value === "string" && value.trim() !== "")
+        ? Number(value)
+        : Number.NaN;
+    const safeValue = Number.isFinite(parsedValue) ? parsedValue : fallback;
+    return Math.round(clampNumber(safeValue, min, max));
   }
 
   async activateView() {
@@ -131,6 +210,7 @@ class VaultColumnsView extends ItemView {
   private selectedTag: string | null = null;
   private activeFilePath: string | null = null;
   private expandedFolders = new Set<string>();
+  private paneResizeCleanup: (() => void) | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -157,6 +237,10 @@ class VaultColumnsView extends ItemView {
     this.render();
   }
 
+  async onClose() {
+    this.stopPaneResize();
+  }
+
   setActiveFile(file: TFile | null) {
     this.activeFilePath = file?.path ?? null;
     this.render();
@@ -166,6 +250,7 @@ class VaultColumnsView extends ItemView {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.addClass("vault-columns-view");
+    this.applyLayoutSettings(containerEl);
 
     const shellEl = containerEl.createDiv({ cls: "vault-columns-shell" });
 
@@ -176,6 +261,14 @@ class VaultColumnsView extends ItemView {
     } else {
       this.renderTagMode(shellEl);
     }
+  }
+
+  private applyLayoutSettings(el: HTMLElement) {
+    const { rowFontSize, primaryPaneWidth, notesPaneShare } = this.plugin.settings;
+    el.style.setProperty("--vault-columns-font-size", `${rowFontSize}px`);
+    el.style.setProperty("--vault-columns-primary-width", `${primaryPaneWidth}px`);
+    el.style.setProperty("--vault-columns-branch-fr", `${100 - notesPaneShare}fr`);
+    el.style.setProperty("--vault-columns-notes-fr", `${notesPaneShare}fr`);
   }
 
   private renderToolbar(parentEl: HTMLElement) {
@@ -216,10 +309,12 @@ class VaultColumnsView extends ItemView {
     const primaryPaneEl = boardEl.createDiv({
       cls: "vault-columns-pane vault-columns-primary-pane",
     });
+    this.renderColumnResizer(boardEl, "调整左侧栏宽度");
     const rightStackEl = boardEl.createDiv({ cls: "vault-columns-right-stack" });
     const branchPaneEl = rightStackEl.createDiv({
       cls: "vault-columns-pane vault-columns-branch-pane",
     });
+    this.renderRowResizer(rightStackEl, "调整子文件夹和笔记区域高度");
     const notesPaneEl = rightStackEl.createDiv({
       cls: "vault-columns-pane vault-columns-notes-pane",
     });
@@ -239,6 +334,7 @@ class VaultColumnsView extends ItemView {
     const tagPaneEl = boardEl.createDiv({
       cls: "vault-columns-pane vault-columns-tag-pane",
     });
+    this.renderColumnResizer(boardEl, "调整标签栏宽度");
     const notesPaneEl = boardEl.createDiv({
       cls: "vault-columns-pane vault-columns-notes-pane",
     });
@@ -260,113 +356,279 @@ class VaultColumnsView extends ItemView {
     });
   }
 
-  private renderTopLevelFolders(parentEl: HTMLElement) {
-    const listEl = parentEl.createDiv({ cls: "vault-columns-scroller" });
-    const rootFolder = this.app.vault.getRoot();
-    this.renderFolderRow(listEl, rootFolder, 0, true, "primary");
+  private renderColumnResizer(parentEl: HTMLElement, label: string) {
+    const resizerEl = parentEl.createDiv({
+      cls: "vault-columns-resizer vault-columns-column-resizer",
+    });
+    resizerEl.setAttr("role", "separator");
+    resizerEl.setAttr("aria-orientation", "vertical");
+    resizerEl.setAttr("aria-label", label);
+    resizerEl.setAttr("title", label);
+    resizerEl.addEventListener("pointerdown", (event) => {
+      this.beginColumnResize(event, parentEl, resizerEl);
+    });
+    resizerEl.addEventListener("dblclick", async () => {
+      this.plugin.settings.primaryPaneWidth = DEFAULT_SETTINGS.primaryPaneWidth;
+      this.applyLayoutSettings(this.containerEl);
+      await this.plugin.saveSettings();
+      this.plugin.refreshViews();
+    });
+  }
 
+  private renderRowResizer(parentEl: HTMLElement, label: string) {
+    const resizerEl = parentEl.createDiv({
+      cls: "vault-columns-resizer vault-columns-row-resizer",
+    });
+    resizerEl.setAttr("role", "separator");
+    resizerEl.setAttr("aria-orientation", "horizontal");
+    resizerEl.setAttr("aria-label", label);
+    resizerEl.setAttr("title", label);
+    resizerEl.addEventListener("pointerdown", (event) => {
+      this.beginRowResize(event, parentEl, resizerEl);
+    });
+    resizerEl.addEventListener("dblclick", async () => {
+      this.plugin.settings.notesPaneShare = DEFAULT_SETTINGS.notesPaneShare;
+      this.applyLayoutSettings(this.containerEl);
+      await this.plugin.saveSettings();
+      this.plugin.refreshViews();
+    });
+  }
+
+  private beginColumnResize(event: PointerEvent, boardEl: HTMLElement, resizerEl: HTMLElement) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    this.stopPaneResize();
+    this.containerEl.addClass("is-resizing");
+    resizerEl.addClass("is-active");
+    document.body.style.cursor = "col-resize";
+
+    const updateWidth = (clientX: number) => {
+      const rect = boardEl.getBoundingClientRect();
+      const handleSize = this.getResizeHandleSize();
+      const maxByContainer = rect.width - MIN_SECONDARY_PANE_WIDTH - handleSize;
+      const maxWidth = Math.min(MAX_PRIMARY_PANE_WIDTH, Math.max(MIN_PRIMARY_PANE_WIDTH, maxByContainer));
+      const nextWidth = clampNumber(clientX - rect.left, MIN_PRIMARY_PANE_WIDTH, maxWidth);
+      this.plugin.settings.primaryPaneWidth = Math.round(nextWidth);
+      this.applyLayoutSettings(this.containerEl);
+    };
+
+    const cleanup = async (save: boolean) => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      this.containerEl.removeClass("is-resizing");
+      resizerEl.removeClass("is-active");
+      document.body.style.cursor = "";
+      this.paneResizeCleanup = null;
+
+      if (save) {
+        await this.plugin.saveSettings();
+        this.plugin.refreshViews();
+      }
+    };
+
+    const onMove = (e: PointerEvent) => {
+      updateWidth(e.clientX);
+    };
+    const onUp = () => {
+      void cleanup(true);
+    };
+    const onCancel = () => {
+      void cleanup(false);
+    };
+
+    this.paneResizeCleanup = () => {
+      void cleanup(false);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+  }
+
+  private beginRowResize(event: PointerEvent, stackEl: HTMLElement, resizerEl: HTMLElement) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    this.stopPaneResize();
+    this.containerEl.addClass("is-resizing");
+    resizerEl.addClass("is-active");
+    document.body.style.cursor = "row-resize";
+
+    const updateShare = (clientY: number) => {
+      const rect = stackEl.getBoundingClientRect();
+      const handleSize = this.getResizeHandleSize();
+      const availableHeight = Math.max(1, rect.height - handleSize);
+      const notesPixels = rect.bottom - clientY - handleSize / 2;
+      const minShare = Math.max(MIN_NOTES_PANE_SHARE, (MIN_NOTES_PANE_HEIGHT / availableHeight) * 100);
+      const maxShare = Math.min(MAX_NOTES_PANE_SHARE, 100 - (MIN_BRANCH_PANE_HEIGHT / availableHeight) * 100);
+      const nextShare = clampNumber((notesPixels / availableHeight) * 100, minShare, maxShare);
+      this.plugin.settings.notesPaneShare = Math.round(nextShare);
+      this.applyLayoutSettings(this.containerEl);
+    };
+
+    const cleanup = async (save: boolean) => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      this.containerEl.removeClass("is-resizing");
+      resizerEl.removeClass("is-active");
+      document.body.style.cursor = "";
+      this.paneResizeCleanup = null;
+
+      if (save) {
+        await this.plugin.saveSettings();
+        this.plugin.refreshViews();
+      }
+    };
+
+    const onMove = (e: PointerEvent) => {
+      updateShare(e.clientY);
+    };
+    const onUp = () => {
+      void cleanup(true);
+    };
+    const onCancel = () => {
+      void cleanup(false);
+    };
+
+    this.paneResizeCleanup = () => {
+      void cleanup(false);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+  }
+
+  private stopPaneResize() {
+    this.paneResizeCleanup?.();
+    this.paneResizeCleanup = null;
+  }
+
+  private getResizeHandleSize() {
+    const rawValue = getComputedStyle(this.containerEl).getPropertyValue("--vault-columns-resizer-size");
+    const parsedValue = Number.parseFloat(rawValue);
+    return Number.isFinite(parsedValue) ? parsedValue : 8;
+  }
+
+  private renderTopLevelFolders(parentEl: HTMLElement) {
+    const scrollerEl = parentEl.createDiv({ cls: "vault-columns-scroller" });
+    const treeEl = scrollerEl.createDiv({ cls: "nav-files-container" });
+    const rootFolder = this.app.vault.getRoot();
+
+    this.renderFolderNode(treeEl, rootFolder, 0, "primary");
     for (const folder of this.getChildFolders(rootFolder)) {
-      this.renderFolderRow(listEl, folder, 0, true, "primary");
+      this.renderFolderNode(treeEl, folder, 0, "primary");
     }
   }
 
   private renderBranchFolders(parentEl: HTMLElement) {
-    const listEl = parentEl.createDiv({ cls: "vault-columns-scroller" });
+    const scrollerEl = parentEl.createDiv({ cls: "vault-columns-scroller" });
     const topFolderPath = this.getTopLevelPath(this.selectedFolderPath);
 
     if (!topFolderPath) {
-      this.renderEmptyState(listEl, "选择一个顶层文件夹后，这里显示它下面的子文件夹");
+      this.renderEmptyState(scrollerEl, "选择一个顶层文件夹后，这里显示它下面的子文件夹");
       return;
     }
 
     const topFolder = this.findFolderByPath(topFolderPath);
     if (!topFolder) {
-      this.renderEmptyState(listEl, "未找到文件夹");
+      this.renderEmptyState(scrollerEl, "未找到文件夹");
       return;
     }
 
     const childFolders = this.getChildFolders(topFolder);
     if (childFolders.length === 0) {
-      this.renderEmptyState(listEl, "无子文件夹");
+      this.renderEmptyState(scrollerEl, "无子文件夹");
       return;
     }
 
+    const treeEl = scrollerEl.createDiv({ cls: "nav-files-container" });
     for (const childFolder of childFolders) {
-      this.renderFolderRow(listEl, childFolder, 0, true, "branch");
-      if (this.expandedFolders.has(childFolder.path)) {
-        this.renderBranchChildren(listEl, childFolder, 1);
-      }
+      this.renderFolderNode(treeEl, childFolder, 0, "branch");
     }
   }
 
-  private renderBranchChildren(parentEl: HTMLElement, folder: TFolder, depth: number) {
-    for (const childFolder of this.getChildFolders(folder)) {
-      this.renderFolderRow(parentEl, childFolder, depth, true, "branch");
-      if (this.expandedFolders.has(childFolder.path)) {
-        this.renderBranchChildren(parentEl, childFolder, depth + 1);
-      }
-    }
-  }
-
-  private renderFolderRow(
+  private renderFolderNode(
     parentEl: HTMLElement,
     folder: TFolder,
     depth: number,
-    showCount: boolean,
     area: "primary" | "branch",
   ) {
     const folderPath = this.getFolderPath(folder);
+    const isRoot = folder === this.app.vault.getRoot();
     const childFolders = this.getChildFolders(folder);
     const hasChildren = childFolders.length > 0;
+    const isExpanded = this.expandedFolders.has(folderPath);
+    const isCollapsible = area === "branch" && hasChildren;
     const isSelected =
       area === "primary"
         ? this.getTopLevelPath(this.selectedFolderPath) === folderPath ||
           (folderPath === "" && this.selectedFolderPath === "")
         : this.selectedFolderPath === folderPath;
-    const isExpanded = this.expandedFolders.has(folderPath);
 
-    const rowEl = parentEl.createDiv({
-      cls: `vault-columns-row vault-columns-folder-row ${isSelected ? "is-selected" : ""}`,
+    const folderEl = parentEl.createDiv({
+      cls: `tree-item nav-folder${isCollapsible && !isExpanded ? " is-collapsed" : ""}`,
     });
-    rowEl.style.setProperty("--level", String(depth));
-    rowEl.setAttr("data-path", folderPath || "/");
 
-    const contentEl = rowEl.createDiv({ cls: "vault-columns-row-content" });
-    const chevronEl = contentEl.createSpan({
-      cls: `vault-columns-chevron ${hasChildren && area === "branch" ? "" : "is-hidden"}`,
+    const titleEl = folderEl.createDiv({
+      cls: `tree-item-self nav-folder-title is-clickable mod-collapsible${
+        isSelected ? " is-active is-selected" : ""
+      }`,
     });
-    if (hasChildren && area === "branch") {
-      setIcon(chevronEl, isExpanded ? "chevron-down" : "chevron-right");
+    titleEl.setAttr("data-path", isRoot ? "/" : folder.path);
+    titleEl.style.setProperty("--nav-item-parent-padding", `${depth * 17}px`);
+    titleEl.style.paddingInlineStart = `${depth * 17 + 24}px`;
+
+    const collapseEl = titleEl.createDiv({
+      cls: `tree-item-icon collapse-icon nav-folder-collapse-indicator${
+        isCollapsible ? "" : " is-hidden"
+      }${isCollapsible && !isExpanded ? " is-collapsed" : ""}`,
+    });
+    if (isCollapsible) {
+      setIcon(collapseEl, "right-triangle");
     }
 
-    const iconEl = contentEl.createSpan({ cls: "vault-columns-row-icon" });
-    setIcon(iconEl, isSelected ? "folder-open" : "folder");
-
-    const nameEl = contentEl.createSpan({
-      cls: "vault-columns-row-name",
+    titleEl.createDiv({
+      cls: "tree-item-inner nav-folder-title-content",
       text: this.getFolderLabel(folder),
     });
-    nameEl.setAttr("title", folderPath || this.getFolderLabel(folder));
 
-    contentEl.createSpan({ cls: "vault-columns-row-spacer" });
+    const auxEl = titleEl.createDiv({
+      cls: "tree-item-flair-outer nav-folder-flair",
+    });
+    auxEl.createSpan({
+      cls: "tree-item-flair vault-columns-count",
+      text: String(this.getDirectViewableFiles(folder).length),
+    });
 
-    if (showCount) {
-      contentEl.createSpan({
-        cls: "vault-columns-row-count",
-        text: String(this.getDirectViewableFiles(folder).length),
-      });
-    }
-
-    rowEl.addEventListener("click", () => {
+    titleEl.addEventListener("click", () => {
       this.selectFolder(folderPath, hasChildren, isExpanded, area);
     });
 
-    rowEl.addEventListener("contextmenu", (event) => {
+    titleEl.addEventListener("contextmenu", (event) => {
       event.preventDefault();
       this.selectedFolderPath = folderPath;
       this.showFolderMenu(event, folder);
       this.render();
     });
+
+    if (!isRoot) {
+      this.attachDragSource(titleEl, folder);
+    }
+
+    if (isCollapsible && isExpanded) {
+      const childrenEl = folderEl.createDiv({
+        cls: "tree-item-children nav-folder-children",
+      });
+      for (const childFolder of childFolders) {
+        this.renderFolderNode(childrenEl, childFolder, depth + 1, area);
+      }
+    }
   }
 
   private selectFolder(
@@ -391,62 +653,62 @@ class VaultColumnsView extends ItemView {
   }
 
   private renderFolderNotes(parentEl: HTMLElement) {
-    const listEl = parentEl.createDiv({ cls: "vault-columns-note-scroller" });
+    const scrollerEl = parentEl.createDiv({ cls: "vault-columns-note-scroller" });
     const folder = this.findFolderByPath(this.selectedFolderPath);
 
     if (!folder) {
-      this.renderEmptyState(listEl, "请选择文件夹");
+      this.renderEmptyState(scrollerEl, "请选择文件夹");
       return;
     }
 
     const notes = this.getDirectViewableFiles(folder);
     if (notes.length === 0) {
-      this.renderEmptyState(listEl, "无直属笔记");
+      this.renderEmptyState(scrollerEl, "无直属笔记");
       return;
     }
 
-    this.renderNoteRows(listEl, notes, false);
+    const treeEl = scrollerEl.createDiv({ cls: "nav-files-container" });
+    this.renderNoteRows(treeEl, notes, false);
   }
 
   private renderTagList(parentEl: HTMLElement) {
-    const listEl = parentEl.createDiv({ cls: "vault-columns-scroller" });
+    const scrollerEl = parentEl.createDiv({ cls: "vault-columns-scroller" });
     const tagCounts = this.getTagCounts();
     const tags = Array.from(tagCounts.keys()).sort((a, b) => a.localeCompare(b));
 
     if (tags.length === 0) {
-      this.renderEmptyState(listEl, "没有可用标签");
+      this.renderEmptyState(scrollerEl, "没有可用标签");
       return;
     }
 
+    const treeEl = scrollerEl.createDiv({ cls: "nav-files-container" });
     for (const tag of tags) {
       const isSelected = this.selectedTag === tag;
-      const rowEl = listEl.createDiv({
-        cls: `vault-columns-row vault-columns-tag-row ${isSelected ? "is-selected" : ""}`,
+      const itemEl = treeEl.createDiv({ cls: "tree-item" });
+      const titleEl = itemEl.createDiv({
+        cls: `tree-item-self is-clickable vault-columns-tag-item${
+          isSelected ? " is-active is-selected" : ""
+        }`,
       });
-      rowEl.style.setProperty("--level", "0");
-      rowEl.setAttr("data-path", tag);
+      titleEl.setAttr("data-tag", tag);
 
-      const contentEl = rowEl.createDiv({ cls: "vault-columns-row-content" });
-      contentEl.createSpan({ cls: "vault-columns-chevron is-hidden" });
-      const iconEl = contentEl.createSpan({ cls: "vault-columns-row-icon" });
+      const iconEl = titleEl.createDiv({ cls: "tree-item-icon" });
       setIcon(iconEl, "tag");
 
-      const nameEl = contentEl.createSpan({
-        cls: "vault-columns-row-name",
+      titleEl.createDiv({
+        cls: "tree-item-inner",
         text: tag,
       });
-      nameEl.setAttr("title", tag);
-
-      contentEl.createSpan({ cls: "vault-columns-row-spacer" });
 
       if (this.plugin.settings.showTagNoteCounts) {
-        contentEl.createSpan({
-          cls: "vault-columns-row-count",
+        const auxEl = titleEl.createDiv({ cls: "tree-item-flair-outer" });
+        auxEl.createSpan({
+          cls: "tree-item-flair vault-columns-count",
           text: String(tagCounts.get(tag) ?? 0),
         });
       }
 
-      rowEl.addEventListener("click", () => {
+      titleEl.addEventListener("click", () => {
         this.selectedTag = tag;
         this.render();
       });
@@ -454,66 +716,240 @@ class VaultColumnsView extends ItemView {
   }
 
   private renderTagNotes(parentEl: HTMLElement) {
-    const listEl = parentEl.createDiv({ cls: "vault-columns-note-scroller" });
+    const scrollerEl = parentEl.createDiv({ cls: "vault-columns-note-scroller" });
 
     if (!this.selectedTag) {
-      this.renderEmptyState(listEl, "请选择标签");
+      this.renderEmptyState(scrollerEl, "请选择标签");
       return;
     }
 
     const notes = this.getFilesForTag(this.selectedTag);
     if (notes.length === 0) {
-      this.renderEmptyState(listEl, "无匹配笔记");
+      this.renderEmptyState(scrollerEl, "无匹配笔记");
       return;
     }
 
-    this.renderNoteRows(listEl, notes, this.plugin.settings.showTagResultPaths);
+    const treeEl = scrollerEl.createDiv({ cls: "nav-files-container" });
+    this.renderNoteRows(treeEl, notes, this.plugin.settings.showTagResultPaths);
   }
 
   private renderNoteRows(parentEl: HTMLElement, files: TFile[], showPath: boolean) {
     const activePath = this.activeFilePath ?? this.app.workspace.getActiveFile()?.path ?? null;
 
     for (const file of files) {
-      const rowEl = parentEl.createDiv({
-        cls: `vault-columns-note-row ${activePath === file.path ? "is-selected" : ""}`,
+      const itemEl = parentEl.createDiv({ cls: "tree-item nav-file" });
+      const titleEl = itemEl.createDiv({
+        cls: `tree-item-self nav-file-title is-clickable${
+          activePath === file.path ? " is-active is-selected" : ""
+        }`,
       });
-      rowEl.setAttr("data-path", file.path);
+      titleEl.setAttr("data-path", file.path);
 
-      const iconEl = rowEl.createSpan({ cls: "vault-columns-note-icon" });
-      setIcon(iconEl, file.extension === "pdf" ? "file" : "file-text");
-
-      const textEl = rowEl.createDiv({ cls: "vault-columns-note-text" });
-      const titleEl = textEl.createDiv({
-        cls: "vault-columns-note-title",
+      titleEl.createDiv({
+        cls: "tree-item-inner nav-file-title-content",
         text: file.basename,
       });
-      titleEl.setAttr("title", file.path);
 
-      if (showPath) {
-        textEl.createDiv({
-          cls: "vault-columns-note-path",
-          text: this.getParentPath(file),
+      if (file.extension && file.extension.toLowerCase() !== "md") {
+        titleEl.createDiv({
+          cls: "nav-file-tag",
+          text: file.extension,
         });
       }
 
-      rowEl.addEventListener("click", () => {
+      if (showPath) {
+        const pathEl = itemEl.createDiv({ cls: "vault-columns-note-path" });
+        pathEl.setText(this.getParentPath(file));
+      }
+
+      titleEl.addEventListener("click", () => {
         this.activeFilePath = file.path;
         this.render();
         this.openFile(file);
       });
 
-      rowEl.addEventListener("contextmenu", (event) => {
+      titleEl.addEventListener("contextmenu", (event) => {
         event.preventDefault();
         this.activeFilePath = file.path;
         this.showFileMenu(event, file);
         this.render();
       });
+
+      this.attachDragSource(titleEl, file);
     }
   }
 
   private renderEmptyState(parentEl: HTMLElement, text: string) {
     const emptyEl = parentEl.createDiv({ cls: "vault-columns-empty-state" });
     emptyEl.createDiv({ cls: "vault-columns-empty-message", text });
+  }
+
+  // Pointer-based drag. HTML5 drag (and even app.dragManager) is intercepted
+  // by Obsidian in side panels and never produces a ghost, so we roll our own.
+  // Drop targets are discovered live via document.elementFromPoint, so we do
+  // not need to attach any per-row drop listeners.
+  private attachDragSource(el: HTMLElement, source: TAbstractFile) {
+    if (source === this.app.vault.getRoot()) return;
+    el.addEventListener("pointerdown", (event) => {
+      this.beginPointerDrag(event, source);
+    });
+  }
+
+  private beginPointerDrag(event: PointerEvent, source: TAbstractFile) {
+    if (event.button !== 0) return;
+    const targetEl = event.target as HTMLElement | null;
+    // Don't start a drag from the collapse chevron — let it toggle.
+    if (targetEl?.closest(".collapse-icon")) return;
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let started = false;
+    let ghostEl: HTMLElement | null = null;
+    let dropEl: HTMLElement | null = null;
+    let dropFolder: TFolder | null = null;
+
+    const setDrop = (el: HTMLElement | null, folder: TFolder | null) => {
+      if (el === dropEl) {
+        dropFolder = folder;
+        return;
+      }
+      dropEl?.removeClass("vault-columns-drop-target");
+      el?.addClass("vault-columns-drop-target");
+      dropEl = el;
+      dropFolder = folder;
+    };
+
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      document.body.style.cursor = "";
+      ghostEl?.remove();
+      ghostEl = null;
+      dropEl?.removeClass("vault-columns-drop-target");
+      dropEl = null;
+    };
+
+    const onMove = (e: PointerEvent) => {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!started) {
+        if (Math.hypot(dx, dy) < 5) return;
+        started = true;
+        ghostEl = this.createDragGhost(source);
+        document.body.appendChild(ghostEl);
+        document.body.style.cursor = "grabbing";
+      }
+
+      if (ghostEl) {
+        ghostEl.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 12}px)`;
+      }
+
+      const overEl = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      if (!overEl || !overEl.closest(".vault-columns-view")) {
+        setDrop(null, null);
+        return;
+      }
+
+      const folderTitleEl = overEl.closest<HTMLElement>(".nav-folder-title");
+      if (folderTitleEl) {
+        const path = folderTitleEl.getAttribute("data-path") ?? "";
+        const folder = this.resolveFolder(path);
+        if (folder && this.isValidDropTarget(source, folder)) {
+          setDrop(folderTitleEl, folder);
+          return;
+        }
+        setDrop(null, null);
+        return;
+      }
+
+      const notesScrollerEl = overEl.closest<HTMLElement>(".vault-columns-note-scroller");
+      if (notesScrollerEl) {
+        const folder = this.findFolderByPath(this.selectedFolderPath);
+        if (folder && this.isValidDropTarget(source, folder)) {
+          setDrop(notesScrollerEl, folder);
+          return;
+        }
+      }
+
+      setDrop(null, null);
+    };
+
+    const onUp = () => {
+      const wasStarted = started;
+      const folder = dropFolder;
+      cleanup();
+      if (wasStarted && folder) {
+        void this.moveInto(source.path, folder);
+      }
+    };
+
+    const onCancel = () => cleanup();
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+  }
+
+  private createDragGhost(source: TAbstractFile): HTMLElement {
+    const ghostEl = document.createElement("div");
+    ghostEl.addClass("vault-columns-drag-ghost");
+    const iconEl = ghostEl.createSpan({ cls: "vault-columns-drag-ghost-icon" });
+    setIcon(iconEl, source instanceof TFolder ? "folder" : "file-text");
+    ghostEl.createSpan({
+      cls: "vault-columns-drag-ghost-label",
+      text: source.name,
+    });
+    return ghostEl;
+  }
+
+  private resolveFolder(dataPath: string): TFolder | null {
+    if (!dataPath || dataPath === "/") return this.app.vault.getRoot();
+    const f = this.app.vault.getAbstractFileByPath(dataPath);
+    return f instanceof TFolder ? f : null;
+  }
+
+  private isValidDropTarget(source: TAbstractFile, target: TFolder): boolean {
+    if (source === target) return false;
+    if (source.parent === target) return false;
+    if (source instanceof TFolder) {
+      const sp = source.path;
+      const tp = this.getFolderPath(target);
+      if (tp === sp || tp.startsWith(`${sp}/`)) return false;
+    }
+    return true;
+  }
+
+  private async moveInto(sourcePath: string, target: TFolder) {
+    const source = this.app.vault.getAbstractFileByPath(sourcePath);
+    if (!source) return;
+    if (source === target) return;
+    if (source.parent === target) return;
+
+    if (source instanceof TFolder) {
+      const targetPath = this.getFolderPath(target);
+      const sourceFolderPath = source.path;
+      if (targetPath === sourceFolderPath || targetPath.startsWith(`${sourceFolderPath}/`)) {
+        new Notice("Cannot move a folder into itself.");
+        return;
+      }
+    }
+
+    const targetBase = this.getFolderPath(target);
+    const newPath = normalizePath(targetBase ? `${targetBase}/${source.name}` : source.name);
+
+    if (await this.app.vault.adapter.exists(newPath)) {
+      new Notice(`"${source.name}" already exists in the target folder.`);
+      return;
+    }
+
+    try {
+      await this.app.fileManager.renameFile(source, newPath);
+      this.plugin.refreshViewsDebounced();
+    } catch (err) {
+      console.error("Vault Columns: move failed", err);
+      new Notice(`Move failed: ${(err as Error).message ?? err}`);
+    }
   }
 
   private showFileMenu(event: MouseEvent, file: TFile) {
@@ -770,24 +1206,10 @@ class VaultColumnsView extends ItemView {
     return new Set(cache ? getAllTags(cache) ?? [] : []);
   }
 
-  private findFolderByPath(folderPath: string) {
-    let match: TFolder | null = null;
-
-    const visit = (folder: TFolder) => {
-      if (this.getFolderPath(folder) === folderPath) {
-        match = folder;
-        return;
-      }
-
-      for (const child of folder.children) {
-        if (child instanceof TFolder) {
-          visit(child);
-        }
-      }
-    };
-
-    visit(this.app.vault.getRoot());
-    return match;
+  private findFolderByPath(folderPath: string): TFolder | null {
+    if (!folderPath) return this.app.vault.getRoot();
+    const f = this.app.vault.getAbstractFileByPath(folderPath);
+    return f instanceof TFolder ? f : null;
   }
 
   private getTopLevelPath(folderPath: string) {
@@ -876,6 +1298,126 @@ class VaultColumnsSettingTab extends PluginSettingTab {
             this.plugin.settings.showTagNoteCounts = value;
             await this.plugin.saveSettings();
             this.plugin.refreshViews();
+          });
+      });
+
+    containerEl.createEl("h3", { text: "Layout" });
+
+    this.addNumberSetting(
+      containerEl,
+      "View font size",
+      "Font size for the whole Vault Columns page, in pixels. Type a number or use the slider.",
+      "rowFontSize",
+      MIN_ROW_FONT_SIZE,
+      MAX_ROW_FONT_SIZE,
+      1,
+      "px",
+    );
+
+    this.addNumberSetting(
+      containerEl,
+      "Primary pane width",
+      "Width of the left folder/tag pane, in pixels. Type a number or use the slider.",
+      "primaryPaneWidth",
+      MIN_PRIMARY_PANE_WIDTH,
+      MAX_PRIMARY_PANE_WIDTH,
+      10,
+      "px",
+    );
+
+    this.addNumberSetting(
+      containerEl,
+      "Notes pane height",
+      "Height share used by the notes pane in folder mode. Type a percentage or use the slider.",
+      "notesPaneShare",
+      MIN_NOTES_PANE_SHARE,
+      MAX_NOTES_PANE_SHARE,
+      1,
+      "%",
+    );
+  }
+
+  private addNumberSetting(
+    containerEl: HTMLElement,
+    name: string,
+    desc: string,
+    key: "rowFontSize" | "primaryPaneWidth" | "notesPaneShare",
+    min: number,
+    max: number,
+    step: number,
+    unit: string,
+  ) {
+    let sliderComponent: SliderComponent | null = null;
+    let textComponent: TextComponent | null = null;
+
+    const getValue = () => this.plugin.settings[key];
+    const setValue = async (rawValue: number) => {
+      const nextValue = Math.round(clampNumber(rawValue, min, max));
+      this.plugin.settings[key] = nextValue;
+      sliderComponent?.setValue(nextValue);
+      textComponent?.setValue(String(nextValue));
+      await this.plugin.saveSettings();
+      this.plugin.refreshViews();
+    };
+    const commitTextValue = async () => {
+      if (!textComponent) return;
+      const parsedValue = Number.parseFloat(textComponent.getValue());
+      if (Number.isFinite(parsedValue)) {
+        await setValue(parsedValue);
+      } else {
+        textComponent.setValue(String(getValue()));
+      }
+    };
+
+    new Setting(containerEl)
+      .setName(name)
+      .setDesc(desc)
+      .addSlider((slider) => {
+        sliderComponent = slider;
+        slider
+          .setLimits(min, max, step)
+          .setValue(getValue())
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            await setValue(value);
+          });
+      })
+      .addText((text) => {
+        textComponent = text;
+        text
+          .setValue(String(getValue()))
+          .setPlaceholder(`${DEFAULT_SETTINGS[key]}${unit}`)
+          .onChange((value) => {
+            const trimmedValue = value.trim();
+            if (trimmedValue === "") return;
+            const parsedValue = Number.parseFloat(trimmedValue);
+            if (Number.isFinite(parsedValue)) {
+              sliderComponent?.setValue(Math.round(clampNumber(parsedValue, min, max)));
+            }
+          });
+        text.inputEl.type = "number";
+        text.inputEl.min = String(min);
+        text.inputEl.max = String(max);
+        text.inputEl.step = String(step);
+        text.inputEl.addClass("vault-columns-layout-input");
+        text.inputEl.style.width = LAYOUT_INPUT_WIDTH;
+        text.inputEl.addEventListener("blur", () => {
+          void commitTextValue();
+        });
+        text.inputEl.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            void commitTextValue();
+          }
+        });
+        text.inputEl.setAttr("aria-label", `${name} (${unit})`);
+      })
+      .addExtraButton((button) => {
+        button
+          .setIcon("rotate-ccw")
+          .setTooltip(`Reset to ${DEFAULT_SETTINGS[key]}${unit}`)
+          .onClick(() => {
+            void setValue(DEFAULT_SETTINGS[key]);
           });
       });
   }

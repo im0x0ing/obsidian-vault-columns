@@ -1,18 +1,28 @@
 .vault-columns-view {
   --vault-columns-gap: 8px;
-  --vault-columns-left-width: minmax(180px, 0.92fr);
-  --vault-columns-right-width: minmax(260px, 1.35fr);
+  --vault-columns-primary-width: 220px;
+  --vault-columns-branch-fr: 38fr;
+  --vault-columns-notes-fr: 62fr;
+  --vault-columns-font-size: 13px;
+  --vault-columns-resizer-size: 8px;
   --vault-columns-accent: var(--primary-color, var(--interactive-accent));
   --vault-columns-surface: var(--background-primary);
   --vault-columns-panel: color-mix(in srgb, var(--background-primary) 97%, var(--vault-columns-accent) 3%);
   --vault-columns-muted-panel: color-mix(in srgb, var(--background-primary) 95%, var(--vault-columns-accent) 5%);
   --vault-columns-border: color-mix(in srgb, var(--background-modifier-border) 82%, var(--vault-columns-accent) 18%);
-  --vault-columns-hover: color-mix(in srgb, var(--background-modifier-hover) 88%, var(--vault-columns-accent) 12%);
-  --vault-columns-selected: var(--text-selection);
-  --vault-columns-row-height: 34px;
-  --vault-columns-row-indent: 18px;
   height: 100%;
   overflow: hidden;
+}
+
+.vault-columns-view,
+.vault-columns-view button,
+.vault-columns-view .vault-columns-pane-header,
+.vault-columns-view .vault-columns-pane-title,
+.vault-columns-view .tree-item-inner,
+.vault-columns-view .tree-item-flair,
+.vault-columns-view .nav-file-tag,
+.vault-columns-view .vault-columns-empty-state {
+  font-size: var(--vault-columns-font-size);
 }
 
 .vault-columns-shell {
@@ -52,11 +62,10 @@
   width: 100%;
   height: 28px;
   color: var(--text-muted);
-  font-size: var(--font-ui-medium);
 }
 
 .vault-columns-mode-button.is-active {
-  background: var(--vault-columns-selected);
+  background: var(--text-selection);
   color: var(--text-normal);
 }
 
@@ -69,21 +78,96 @@
 .vault-columns-folder-board,
 .vault-columns-tag-board {
   display: grid;
-  grid-template-columns: var(--vault-columns-left-width) var(--vault-columns-right-width);
+  grid-template-columns: minmax(140px, var(--vault-columns-primary-width)) var(--vault-columns-resizer-size) minmax(220px, 1fr);
   grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-  gap: var(--vault-columns-gap);
+  gap: 0;
   overflow: hidden;
 }
 
 .vault-columns-right-stack {
   display: grid;
-  grid-template-rows: minmax(132px, 38%) minmax(180px, 62%);
+  grid-template-rows: minmax(80px, var(--vault-columns-branch-fr)) var(--vault-columns-resizer-size) minmax(120px, var(--vault-columns-notes-fr));
   min-width: 0;
   min-height: 0;
-  gap: var(--vault-columns-gap);
+  gap: 0;
   overflow: hidden;
+}
+
+.vault-columns-folder-board > .vault-columns-pane:first-child,
+.vault-columns-tag-board > .vault-columns-pane:first-child {
+  margin-inline-end: calc(var(--vault-columns-gap) / 2);
+}
+
+.vault-columns-folder-board > .vault-columns-right-stack,
+.vault-columns-tag-board > .vault-columns-pane:last-child {
+  margin-inline-start: calc(var(--vault-columns-gap) / 2);
+}
+
+.vault-columns-right-stack > .vault-columns-pane:first-child {
+  margin-bottom: calc(var(--vault-columns-gap) / 2);
+}
+
+.vault-columns-right-stack > .vault-columns-pane:last-child {
+  margin-top: calc(var(--vault-columns-gap) / 2);
+}
+
+.vault-columns-resizer {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  min-height: 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.vault-columns-column-resizer {
+  cursor: col-resize;
+}
+
+.vault-columns-row-resizer {
+  cursor: row-resize;
+}
+
+.vault-columns-resizer::before {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  background: transparent;
+  transition: background-color 120ms ease, opacity 120ms ease;
+  opacity: 0.85;
+}
+
+.vault-columns-column-resizer::before {
+  top: 8px;
+  bottom: 8px;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+}
+
+.vault-columns-row-resizer::before {
+  left: 8px;
+  right: 8px;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+}
+
+.vault-columns-resizer:hover::before,
+.vault-columns-resizer.is-active::before,
+.vault-columns-view.is-resizing .vault-columns-resizer.is-active::before {
+  background: var(--interactive-accent);
+}
+
+.vault-columns-view.is-resizing {
+  cursor: inherit;
+  user-select: none;
+}
+
+.vault-columns-layout-input {
+  width: 72px;
 }
 
 .vault-columns-pane {
@@ -131,7 +215,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-muted);
-  font-size: var(--font-ui-medium);
 }
 
 .vault-columns-scroller,
@@ -139,80 +222,23 @@
   height: calc(100% - 34px);
   min-height: 0;
   overflow: auto;
-  padding: 8px;
+  padding: 4px 6px 8px;
 }
 
-.vault-columns-note-scroller {
-  padding: 8px 10px 12px;
+/* Let native nav-folder / nav-file styling do the heavy lifting so the rows
+   look and feel like Obsidian's built-in file explorer, and so plugins like
+   Iconic can find rows via .nav-folder-title[data-path] / .nav-file-title[data-path]. */
+.vault-columns-view .nav-files-container {
+  padding: 0;
 }
 
-.vault-columns-row {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  height: var(--vault-columns-row-height);
-  padding-inline-start: calc(var(--level, 0) * var(--vault-columns-row-indent));
-  cursor: pointer;
-  user-select: none;
+.vault-columns-view .tree-item-self.nav-folder-title,
+.vault-columns-view .tree-item-self.nav-file-title {
+  position: relative;
 }
 
-.vault-columns-row-content {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  padding: 0 8px;
-  border-radius: 8px;
-}
-
-.vault-columns-row:hover > .vault-columns-row-content {
-  background: var(--vault-columns-hover);
-}
-
-.vault-columns-row.is-selected > .vault-columns-row-content {
-  background: var(--vault-columns-selected);
-}
-
-.vault-columns-chevron,
-.vault-columns-row-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 18px;
-  width: 18px;
-  height: 18px;
-  color: var(--text-muted);
-}
-
-.vault-columns-chevron {
-  margin-inline-end: 4px;
-}
-
-.vault-columns-row-icon {
-  margin-inline-end: 8px;
-}
-
-.vault-columns-chevron.is-hidden {
-  visibility: hidden;
-}
-
-.vault-columns-row-name {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-normal);
-  font-size: var(--font-ui-medium);
-}
-
-.vault-columns-row-spacer {
-  flex: 1;
-  min-width: 8px;
-}
-
-.vault-columns-row-count {
+/* Count badge shown on the right of folder rows and tag rows. */
+.vault-columns-view .vault-columns-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -222,60 +248,87 @@
   border-radius: 9px;
   color: var(--text-faint);
   background: color-mix(in srgb, var(--background-primary) 72%, transparent);
-  font-size: var(--font-ui-smaller);
 }
 
-.vault-columns-note-row {
+/* Tag rows reuse tree-item styling but need a small inset for the icon. */
+.vault-columns-view .vault-columns-tag-item {
   display: flex;
   align-items: center;
-  min-width: 0;
-  padding: 6px 10px;
-  border-radius: 8px;
-  cursor: pointer;
+  gap: 6px;
 }
 
-.vault-columns-note-row + .vault-columns-note-row {
-  margin-top: 2px;
-}
-
-.vault-columns-note-row:hover {
-  background: var(--vault-columns-hover);
-}
-
-.vault-columns-note-row.is-selected {
-  background: var(--vault-columns-selected);
-}
-
-.vault-columns-note-icon {
+.vault-columns-view .vault-columns-tag-item .tree-item-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 18px;
   width: 18px;
-  margin-inline-end: 8px;
+  height: 18px;
   color: var(--text-muted);
 }
 
-.vault-columns-note-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.vault-columns-note-title {
-  min-width: 0;
+/* Path hint shown under the title when displaying tag search results. */
+.vault-columns-view .vault-columns-note-path {
+  margin: -2px 0 4px 22px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-normal);
-  font-size: var(--font-ui-medium);
-}
-
-.vault-columns-note-path {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--font-ui-smaller);
   color: var(--text-faint);
+}
+
+/* Drop target highlight while dragging a file/folder over a folder row. */
+.vault-columns-view .vault-columns-drop-target,
+.vault-columns-view .tree-item-self.vault-columns-drop-target {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--interactive-accent) 16%, transparent);
+  border-radius: var(--radius-s);
+}
+
+.vault-columns-view .vault-columns-note-scroller.vault-columns-drop-target {
+  outline-offset: -4px;
+}
+
+/* Floating ghost shown next to the cursor during a pointer-based drag. */
+.vault-columns-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  pointer-events: none;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+  color: var(--text-normal);
+  font-size: var(--vault-columns-font-size);
+  max-width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vault-columns-drag-ghost-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+}
+
+.vault-columns-drag-ghost-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Hide the collapse chevron slot when a row has no children but we still want
+   alignment with collapsible siblings. */
+.vault-columns-view .nav-folder-collapse-indicator.is-hidden {
+  visibility: hidden;
 }
 
 .vault-columns-empty-state {
@@ -286,6 +339,5 @@
   padding: 24px 16px;
   color: var(--text-muted);
   text-align: center;
-  font-size: var(--font-ui-small);
   line-height: 1.5;
 }
